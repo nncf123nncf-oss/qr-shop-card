@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QRつきショップカードメーカー｜お店のSNS・サイトへ誘導するカードを作る</title>
+<meta name="description" content="店名・一言メッセージ・誘導先URLを入れると、QRコード入りの名刺サイズカードが自動でレイアウトされます。画像として保存でき、A4に複数枚まとめて印刷することもできます。ログイン不要、入力した内容はブラウザ内だけで処理され、サーバーには送信されません。">
+<style>
+  :root {
+    --bg: #EEF3F5;
+    --ink: #1F2E33;
+    --muted: #5C6F76;
+    --line: #CBD9DD;
+    --card: #FFFFFF;
+    --accent: #1D6F8C;
+    --accent-ink: #FFFFFF;
+    --danger: #B3261E;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink);
+    font-family: "Hiragino Sans", "Yu Gothic", "BIZ UDPGothic", "Noto Sans JP", system-ui, sans-serif; line-height: 1.6; }
+  body { padding: 0 16px; }
+  main { max-width: 720px; margin: 0 auto; padding: 24px 0 40px; }
+  h1 { font-size: 20px; line-height: 1.4; margin: 0 0 6px; }
+  .lead { margin: 0 0 20px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin: 0 0 16px; }
+  h2 { font-size: 15px; margin: 0 0 10px; }
+  .field { margin-bottom: 14px; }
+  .field:last-child { margin-bottom: 0; }
+  .field label { display: block; font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+  .field .hint { font-size: 12px; color: var(--muted); font-weight: 400; margin-left: 6px; }
+  .field input[type="text"], .field input[type="url"] {
+    width: 100%; font: inherit; font-size: 16px; padding: 10px 12px;
+    border: 1px solid var(--line); border-radius: 6px; background: #FFF; color: var(--ink); min-height: 44px; }
+  .field input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .msg { min-height: 1.4em; font-size: 13px; margin: 6px 0 0; }
+  .msg.error { color: var(--danger); font-weight: 700; }
+
+  .previewwrap { display: flex; justify-content: center; align-items: center; background: #E1EAED; border-radius: 8px;
+    padding: 16px; margin-bottom: 12px; overflow-x: auto; }
+
+  .shop-card { position: relative; width: 100%; max-width: 420px; aspect-ratio: 91 / 55; background: #FFFFFF;
+    box-shadow: 0 2px 10px rgba(0,0,0,.14); overflow: hidden; container-type: inline-size;
+    display: flex; flex-direction: row; }
+
+  .card-text { flex: 1 1 auto; min-width: 0; padding: 6% 5%; display: flex; flex-direction: column; justify-content: center; }
+  .card-name { font-weight: 800; margin: 0 0 3%; overflow-wrap: break-word; word-break: break-word; max-width: 100%;
+    font-size: calc(clamp(12px, 8.5cqw, 24px) * var(--card-text-scale, 1)); line-height: 1.25; color: var(--ink); }
+  .card-message { color: var(--muted); margin: 0; overflow-wrap: break-word; max-width: 100%;
+    font-size: calc(clamp(9px, 4.6cqw, 14px) * var(--card-text-scale, 1)); line-height: 1.4; }
+  .card-caption { color: var(--accent); margin: 4% 0 0; font-weight: 700;
+    font-size: calc(clamp(7px, 3.4cqw, 11px) * var(--card-text-scale, 1)); line-height: 1.3; }
+
+  .card-qr-box { flex: 0 0 42%; height: 100%; background: #F2F6F7; display: flex; align-items: center; justify-content: center;
+    padding: 6%; }
+  .card-qr-box.empty { color: var(--muted); font-size: clamp(9px, 4.5cqw, 12px); text-align: center; }
+  .card-qr-box canvas { width: 100%; height: 100%; max-width: 100%; max-height: 100%; image-rendering: pixelated; }
+
+  .btnrow { display: flex; flex-direction: column; gap: 10px; }
+  .btn { font: inherit; font-size: 15px; font-weight: 700; padding: 12px 16px; border-radius: 6px; border: 1px solid var(--accent);
+    background: var(--accent); color: var(--accent-ink); cursor: pointer; min-height: 48px; width: 100%; }
+  .btn.secondary { background: #FFF; color: var(--accent); }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .savenote { font-size: 12px; color: var(--muted); margin-top: 10px; }
+
+  .mw-footer { box-sizing: border-box; width: 100%; max-width: 100%; margin: 24px 0 0; padding: 16px; background: #F7F7F8;
+    border: 1px solid #D8D8DC; border-radius: 6px; color: #3A3A3E; font-family: system-ui, sans-serif; font-size: 12px; line-height: 1.7; }
+  .mw-footer p { margin: 0 0 6px; }
+  .mw-footer p:last-child { margin-bottom: 0; }
+  .mw-footer a { color: #0B5AA6; }
+
+  #printArea { display: none; }
+
+  @media print {
+    /* visibility:hiddenだけだと非表示要素が文書の高さとして残り、印刷時に
+       余分な空白ページが生成される（Day051で実測判明済みの不具合。同じ対策を流用）。
+       mainをdisplay:noneでレイアウトから完全に外す。 */
+    main { display: none; }
+    #printArea { display: block; position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0; }
+    #printArea .print-page { width: 210mm; height: 297mm; padding: 10mm; position: relative;
+      display: grid; grid-template-columns: repeat(2, 91mm); grid-auto-rows: 55mm; gap: 4mm; align-content: start; }
+    #printArea .shop-card { width: 91mm; height: 55mm; max-width: none; aspect-ratio: auto; box-shadow: none; border: 1px solid #DDD; }
+  }
+</style>
+<style id="pageSizeStyle">@page { size: 210mm 297mm; margin: 0; }</style>
+</head>
+<body>
+<main>
+  <h1>QRつきショップカードメーカー</h1>
+  <p class="lead">店名・一言メッセージ・誘導先URLを入れると、QRコード入りの名刺サイズカードが自動でできます。画像として保存でき、A4に複数枚まとめて印刷することもできます。ログイン不要、入力した内容はブラウザ内だけで処理され、サーバーには送信されません。</p>
+
+  <div class="panel">
+    <div class="field">
+      <label for="storeName">店名<span class="hint">必須・全角20文字目安</span></label>
+      <input type="text" id="storeName" maxlength="24" placeholder="例: 喫茶ことり">
+    </div>
+    <div class="field">
+      <label for="storeMessage">一言メッセージ<span class="hint">任意・全角30文字目安</span></label>
+      <input type="text" id="storeMessage" maxlength="34" placeholder="例: フォローお願いします">
+    </div>
+    <div class="field">
+      <label for="storeUrl">誘導先URL<span class="hint">必須・https:// または http:// から始まる形式</span></label>
+      <input type="url" id="storeUrl" placeholder="例: https://example.com/shop">
+      <div class="msg" id="urlMsg"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>プレビュー</h2>
+    <div class="previewwrap">
+      <div class="shop-card" id="previewCard">
+        <div class="card-text">
+          <p class="card-name" id="previewName">（店名）</p>
+          <p class="card-message" id="previewMessage" style="display:none;"></p>
+          <p class="card-caption" id="previewCaption">QRを読み取ってご覧ください</p>
+        </div>
+        <div class="card-qr-box empty" id="qrBox">QRコード<br>誘導先URLを入力すると表示されます</div>
+      </div>
+    </div>
+    <div class="btnrow">
+      <button type="button" class="btn" id="saveBtn" disabled>画像を保存する（PNG）</button>
+      <button type="button" class="btn secondary" id="printBtn" disabled>印刷する（A4に8枚面付け）</button>
+    </div>
+    <p class="savenote">入力した店名・一言メッセージ・誘導先URLはブラウザ内だけで処理され、サーバーには送信されません。QRコードの生成も含めてすべて端末内で完結します。</p>
+  </div>
+
+  <footer class="mw-footer">
+    <p>みちAIワークス（MICHI AI WORKS）／代表 田中　泉</p>
+    <p>運営: <a href="https://michi-portfolio.vercel.app/" rel="noopener">みちAIワークス 公式サイト</a>（https://michi-portfolio.vercel.app/ ）／ お問い合わせ: <a href="mailto:nncf123nncf@gmail.com">nncf123nncf@gmail.com</a></p>
+    <p>入力した店名・一言メッセージ・誘導先URLはすべてブラウザ内だけで処理され、サーバーには送信されません。QRコードの生成も端末内だけで行われ、外部へは送信されません。アクセス解析（Cloudflare Web Analytics）でページの閲覧数を計測していますが、入力した内容は送信しません。</p>
+    <p>ログイン・会員登録・パスワードの入力を求めることはありません。</p>
+    <p>誘導先URLが実際に開けるかどうかの確認は行っていません。入力したURLが正しいか、公開前にご自身でお確かめください。</p>
+  </footer>
+</main>
+
+<div id="printArea"></div>
+
+<!-- Cloudflare Web Analytics（ページの閲覧に関する計測。入力内容は送信しません） -->
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js"
+        data-cf-beacon='{"token": "b4c9f7e78daf4edb84ef52b88633f649"}'></script>
+<!-- End Cloudflare Web Analytics -->
+
+<!-- QRコード生成: qrcode-generator (Kazuhiko Arase, MIT License)。CDNを使わず同梱し、外部通信なしで完結させる -->
+<script src="qrcode.js"></script>
+
+<script>
+(function () {
+  "use strict";
+
+  var state = { qr: null, urlValid: false };
+
+  var els = {
+    storeName: document.getElementById("storeName"),
+    storeMessage: document.getElementById("storeMessage"),
+    storeUrl: document.getElementById("storeUrl"),
+    urlMsg: document.getElementById("urlMsg"),
+    previewCard: document.getElementById("previewCard"),
+    previewName: document.getElementById("previewName"),
+    previewMessage: document.getElementById("previewMessage"),
+    previewCaption: document.getElementById("previewCaption"),
+    qrBox: document.getElementById("qrBox"),
+    saveBtn: document.getElementById("saveBtn"),
+    printBtn: document.getElementById("printBtn"),
+    printArea: document.getElementById("printArea")
+  };
+
+  function escapeHtml(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+
+  // 誘導先URLの形式チェック。実際に開けるかどうかの検証はしない（原案どおり）
+  function validateUrl(value) {
+    if (!value) { return { ok: false, reason: "" }; }
+    if (!/^https?:\/\/\S+$/i.test(value)) {
+      return { ok: false, reason: "誘導先URLは https:// または http:// から始まる形式で入力してください。" };
+    }
+    return { ok: true, reason: "" };
+  }
+
+  // qrcodeオブジェクトのモジュール配列を、指定canvasに直接描画する
+  // （createDataURLで生成した<img>を経由せず、drawImageの非同期読み込みを待たずに済ませる）
+  function drawQrToCanvas(qr, canvas, marginModules) {
+    var count = qr.getModuleCount();
+    var margin = typeof marginModules === "number" ? marginModules : 2;
+    var total = count + margin * 2;
+    var size = canvas.width; // canvasは正方形前提
+    var cell = size / total;
+    var ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, size, size);
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, size, size);
+    ctx.fillStyle = "#000000";
+    for (var r = 0; r < count; r++) {
+      for (var c = 0; c < count; c++) {
+        if (qr.isDark(r, c)) {
+          var x = (margin + c) * cell;
+          var y = (margin + r) * cell;
+          // 隙間が出ないよう、隣接セルとわずかに重なる幅で描画する
+          ctx.fillRect(Math.floor(x), Math.floor(y), Math.ceil(cell) + 1, Math.ceil(cell) + 1);
+        }
+      }
+    }
+  }
+
+  function buildQr(url) {
+    // typeNumber=0で自動選択。誤り訂正レベルは印刷物での読み取り耐性を考えて'Q'にする
+    var qr = qrcode(0, "Q");
+    qr.addData(url);
+    qr.make();
+    return qr;
+  }
+
+  function render() {
+    var name = els.storeName.value.trim();
+    var message = els.storeMessage.value.trim();
+    var urlRaw = els.storeUrl.value.trim();
+    var check = validateUrl(urlRaw);
+
+    els.previewName.textContent = name || "（店名）";
+    if (message) {
+      els.previewMessage.textContent = message;
+      els.previewMessage.style.display = "";
+    } else {
+      els.previewMessage.textContent = "";
+      els.previewMessage.style.display = "none";
+    }
+
+    if (urlRaw && !check.ok) {
+      els.urlMsg.textContent = check.reason;
+      els.urlMsg.classList.add("error");
+    } else {
+      els.urlMsg.textContent = "";
+      els.urlMsg.classList.remove("error");
+    }
+
+    state.urlValid = check.ok;
+
+    if (check.ok) {
+      try {
+        state.qr = buildQr(urlRaw);
+        if (els.qrBox.classList.contains("empty") || !els.qrBox.querySelector("canvas")) {
+          els.qrBox.classList.remove("empty");
+          els.qrBox.innerHTML = "";
+          var c = document.createElement("canvas");
+          c.width = 240; c.height = 240;
+          els.qrBox.appendChild(c);
+        }
+        drawQrToCanvas(state.qr, els.qrBox.querySelector("canvas"), 2);
+      } catch (e) {
+        // QRの容量上限（長すぎるURL等）を超えた場合はエラー表示にフォールバックする
+        state.qr = null;
+        els.qrBox.classList.add("empty");
+        els.qrBox.innerHTML = "URLが長すぎてQRコードを生成できません";
+      }
+    } else {
+      state.qr = null;
+      els.qrBox.classList.add("empty");
+      els.qrBox.innerHTML = "QRコード<br>誘導先URLを入力すると表示されます";
+    }
+
+    var ready = name.length > 0 && state.urlValid && !!state.qr;
+    els.saveBtn.disabled = !ready;
+    els.printBtn.disabled = !ready;
+
+    // 店名・一言メッセージ・キャプションが長いとカード内で見切れるため、実測して収まらなければ
+    // 文字サイズを段階的に縮小する（Day051のfitPopCardと同じ考え方）。
+    // キャプション（QRを読み取ってご覧ください）は常時表示で3要素の中で最も下にあるため、
+    // 配列の末尾に含めることで「末尾から探す」ロジックがそのままキャプションの見切れも検出できる
+    // （advocateレビュー①で、キャプションが判定対象外になっていた不具合を指摘され修正）
+    state.textScale = fitCard(els.previewCard, [els.previewName, els.previewMessage, els.previewCaption]);
+  }
+
+  function fitCard(cardEl, candidates) {
+    // タダス実測検算で発見: 個別要素（店名・メッセージ）の下端/右端だけを見る方式だと、
+    // .card-textがjustify-content:centerのため、内容がコンテナより高くなったとき
+    // 上下対称にはみ出す（店名の上端がカード上端からはみ出し、overflow:hiddenで
+    // 文字の上半分が消える）事故を検出できなかった。.card-textコンテナ自体の
+    // scrollHeight/scrollWidthとclientHeight/clientWidthの比較に切り替えることで、
+    // 上端・左端を含むあらゆる方向のはみ出しを一発で検出する。
+    var textBox = els.previewText || cardEl.querySelector(".card-text");
+    cardEl.style.setProperty("--card-text-scale", "1");
+    var scale = 1;
+    for (var i = 0; i < 10; i++) {
+      var overflowing = textBox.scrollHeight > textBox.clientHeight + 1 ||
+        textBox.scrollWidth > textBox.clientWidth + 1;
+      if (!overflowing) { break; }
+      if (scale <= 0.55) { break; }
+      scale = Math.max(0.55, scale - 0.06);
+      cardEl.style.setProperty("--card-text-scale", String(scale));
+    }
+    return scale;
+  }
+
+  els.storeName.addEventListener("input", render);
+  els.storeMessage.addEventListener("input", render);
+  els.storeUrl.addEventListener("input", render);
+
+  // ---- 画像保存（canvas.toBlob） ----
+  function shrinkFontToFit(ctx, text, maxWidth, startSize, minSize, fontFamily, weight) {
+    var size = startSize;
+    while (size > minSize) {
+      ctx.font = weight + " " + size + "px " + fontFamily;
+      if (ctx.measureText(text).width <= maxWidth) { break; }
+      size -= 1;
+    }
+    ctx.font = weight + " " + size + "px " + fontFamily;
+    return size;
+  }
+
+  function buildSaveCanvas() {
+    // 91mm x 55mm を 300dpi相当（1mm=11.81px）で描画する
+    var W = Math.round(91 * 11.811);
+    var H = Math.round(55 * 11.811);
+    var canvas = document.createElement("canvas");
+    canvas.width = W; canvas.height = H;
+    var ctx = canvas.getContext("2d");
+    var fontFamily = '"Hiragino Sans","Yu Gothic","BIZ UDPGothic","Noto Sans JP",system-ui,sans-serif';
+
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, W, H);
+
+    // QR領域（右側42%）
+    var qrBoxW = Math.round(W * 0.42);
+    var qrBoxX = W - qrBoxW;
+    ctx.fillStyle = "#F2F6F7";
+    ctx.fillRect(qrBoxX, 0, qrBoxW, H);
+
+    var qrPad = Math.round(qrBoxW * 0.08);
+    var qrSize = Math.min(qrBoxW, H) - qrPad * 2;
+    var qrCanvas = document.createElement("canvas");
+    qrCanvas.width = qrSize; qrCanvas.height = qrSize;
+    drawQrToCanvas(state.qr, qrCanvas, 2);
+    var qrX = qrBoxX + (qrBoxW - qrSize) / 2;
+    var qrY = (H - qrSize) / 2;
+    ctx.drawImage(qrCanvas, qrX, qrY);
+
+    // テキスト領域（左側）
+    var textX = Math.round(W * 0.05);
+    var textMaxWidth = qrBoxX - textX - Math.round(W * 0.03);
+    var name = els.storeName.value.trim() || "（店名）";
+    var message = els.storeMessage.value.trim();
+
+    ctx.fillStyle = "#1F2E33";
+    ctx.textBaseline = "alphabetic";
+    var nameSize = shrinkFontToFit(ctx, name, textMaxWidth, Math.round(H * 0.22), Math.round(H * 0.12), fontFamily, "800");
+    var nameY = message ? Math.round(H * 0.40) : Math.round(H * 0.52);
+    ctx.fillText(name, textX, nameY);
+
+    if (message) {
+      ctx.fillStyle = "#5C6F76";
+      var msgSize = shrinkFontToFit(ctx, message, textMaxWidth, Math.round(H * 0.13), Math.round(H * 0.08), fontFamily, "400");
+      var msgY = nameY + Math.round(H * 0.20);
+      ctx.fillText(message, textX, msgY);
+    }
+
+    ctx.fillStyle = "#1D6F8C";
+    var capSize = shrinkFontToFit(ctx, "QRを読み取ってご覧ください", textMaxWidth, Math.round(H * 0.10), Math.round(H * 0.06), fontFamily, "700");
+    ctx.fillText("QRを読み取ってご覧ください", textX, H - Math.round(H * 0.08));
+
+    return canvas;
+  }
+
+  els.saveBtn.addEventListener("click", function () {
+    if (!state.qr) { return; }
+    var canvas = buildSaveCanvas();
+    canvas.toBlob(function (blob) {
+      if (!blob) { return; }
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = "shop-card.png";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    }, "image/png");
+  });
+
+  // ---- 印刷（A4に8枚面付け） ----
+  function buildPrintArea() {
+    if (!state.qr) { return; }
+    var qrCanvas = document.createElement("canvas");
+    qrCanvas.width = 240; qrCanvas.height = 240;
+    drawQrToCanvas(state.qr, qrCanvas, 2);
+    var qrDataUrl = qrCanvas.toDataURL("image/png");
+
+    var name = escapeHtml(els.storeName.value.trim()) || "（店名）";
+    var message = els.storeMessage.value.trim();
+    var messageHtml = message ? '<p class="card-message" style="display:block;">' + escapeHtml(message) + '</p>' : "";
+    var scaleStyle = "--card-text-scale:" + (state.textScale || 1) + ";";
+
+    var cardHtml =
+      '<div class="shop-card" style="' + scaleStyle + '">' +
+      '<div class="card-text">' +
+      '<p class="card-name">' + name + '</p>' +
+      messageHtml +
+      '<p class="card-caption">QRを読み取ってご覧ください</p>' +
+      '</div>' +
+      '<div class="card-qr-box"><img src="' + qrDataUrl + '" alt="" style="width:100%;height:100%;object-fit:contain;"></div>' +
+      '</div>';
+
+    var page = document.createElement("div");
+    page.className = "print-page";
+    for (var i = 0; i < 8; i++) {
+      var wrap = document.createElement("div");
+      wrap.innerHTML = cardHtml;
+      page.appendChild(wrap.firstChild);
+    }
+    els.printArea.innerHTML = "";
+    els.printArea.appendChild(page);
+  }
+
+  els.printBtn.addEventListener("click", function () {
+    buildPrintArea();
+    window.print();
+  });
+
+  render();
+
+  // Webフォント（Hiragino Sans/Noto Sans JP等）の読み込み完了がrender()実行後にずれ込むと、
+  // fitCard()が確定前のフォントメトリクスで測定してしまい、縮小量が不足したまま固定される
+  // ことがある（タダス実測検算で指摘）。フォント確定後にもう一度だけ再計算する。
+  if (window.document && document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(function () { render(); }).catch(function () {});
+  }
+})();
+</script>
+</body>
+</html>
